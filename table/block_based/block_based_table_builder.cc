@@ -54,7 +54,6 @@ namespace ROCKSDB_NAMESPACE {
 extern const std::string kHashIndexPrefixesBlock;
 extern const std::string kHashIndexPrefixesMetadataBlock;
 
-
 // Without anonymous namespace here, we fail the warning -Wmissing-prototypes
 namespace {
 
@@ -414,111 +413,7 @@ struct BlockBasedTableBuilder::Rep {
       const int _level_at_creation, const std::string& _column_family_name,
       const uint64_t _creation_time, const uint64_t _oldest_key_time,
       const uint64_t target_file_size, const uint64_t _file_creation_time,
-      const std::string& _db_id, const std::string& _db_session_id)
-      : ioptions(_ioptions),
-        moptions(_moptions),
-        table_options(table_opt),
-        internal_comparator(icomparator),
-        file(f),
-        offset(0),
-        alignment(table_options.block_align
-                      ? std::min(table_options.block_size, kDefaultPageSize)
-                      : 0),
-        data_block(table_options.block_restart_interval,
-                   table_options.use_delta_encoding,
-                   false /* use_value_delta_encoding */,
-                   icomparator.user_comparator()
-                           ->CanKeysWithDifferentByteContentsBeEqual()
-                       ? BlockBasedTableOptions::kDataBlockBinarySearch
-                       : table_options.data_block_index_type,
-                   table_options.data_block_hash_table_util_ratio),
-        range_del_block(1 /* block_restart_interval */),
-        internal_prefix_transform(_moptions.prefix_extractor.get()),
-        compression_type(_compression_type),
-        sample_for_compression(_moptions.sample_for_compression),
-        compressible_input_data_bytes(0),
-        uncompressible_input_data_bytes(0),
-        sampled_input_data_bytes(0),
-        sampled_output_slow_data_bytes(0),
-        sampled_output_fast_data_bytes(0),
-        compression_opts(_compression_opts),
-        compression_dict(),
-        compression_ctxs(_compression_opts.parallel_threads),
-        verify_ctxs(_compression_opts.parallel_threads),
-        verify_dict(),
-        state((_compression_opts.max_dict_bytes > 0) ? State::kBuffered
-                                                     : State::kUnbuffered),
-        use_delta_encoding_for_index_values(table_opt.format_version >= 4 &&
-                                            !table_opt.block_align),
-        compressed_cache_key_prefix_size(0),
-        flush_block_policy(
-            table_options.flush_block_policy_factory->NewFlushBlockPolicy(
-                table_options, data_block)),
-        level_at_creation(_level_at_creation),
-        column_family_id(_column_family_id),
-        column_family_name(_column_family_name),
-        creation_time(_creation_time),
-        oldest_key_time(_oldest_key_time),
-        file_creation_time(_file_creation_time),
-        db_id(_db_id),
-        db_session_id(_db_session_id),
-        db_host_id(ioptions.db_host_id),
-        status_ok(true),
-        io_status_ok(true) {
-    if (target_file_size == 0) {
-      buffer_limit = compression_opts.max_dict_buffer_bytes;
-    } else if (compression_opts.max_dict_buffer_bytes == 0) {
-      buffer_limit = target_file_size;
-    } else {
-      buffer_limit =
-          std::min(target_file_size, compression_opts.max_dict_buffer_bytes);
-    }
-    for (uint32_t i = 0; i < compression_opts.parallel_threads; i++) {
-      compression_ctxs[i].reset(new CompressionContext(compression_type));
-    }
-    if (table_options.index_type ==
-        BlockBasedTableOptions::kTwoLevelIndexSearch) {
-      p_index_builder_ = PartitionedIndexBuilder::CreateIndexBuilder(
-          &internal_comparator, use_delta_encoding_for_index_values,
-          table_options);
-      index_builder.reset(p_index_builder_);
-    } else {
-      index_builder.reset(IndexBuilder::CreateIndexBuilder(
-          table_options.index_type, &internal_comparator,
-          &this->internal_prefix_transform, use_delta_encoding_for_index_values,
-          table_options));
-    }
-    if (skip_filters) {
-      filter_builder = nullptr;
-    } else {
-      FilterBuildingContext context(table_options);
-      context.column_family_name = column_family_name;
-      context.compaction_style = ioptions.compaction_style;
-      context.level_at_creation = level_at_creation;
-      context.info_log = ioptions.info_log;
-      filter_builder.reset(CreateFilterBlockBuilder(
-          ioptions, moptions, context, use_delta_encoding_for_index_values,
-          p_index_builder_));
-    }
-
-    for (auto& collector_factories : *int_tbl_prop_collector_factories) {
-      table_properties_collectors.emplace_back(
-          collector_factories->CreateIntTblPropCollector(column_family_id));
-    }
-    table_properties_collectors.emplace_back(
-        new BlockBasedTablePropertiesCollector(
-            table_options.index_type, table_options.whole_key_filtering,
-            _moptions.prefix_extractor != nullptr));
-    if (table_options.verify_compression) {
-      for (uint32_t i = 0; i < compression_opts.parallel_threads; i++) {
-        verify_ctxs[i].reset(new UncompressionContext(compression_type));
-      }
-    }
-
-    if (!ReifyDbHostIdProperty(ioptions.env, &db_host_id).ok()) {
-      ROCKS_LOG_INFO(ioptions.info_log, "db_host_id property will not be set");
-    }
-  }
+      const std::string& _db_id, const std::string& _db_session_id);
 
   Rep(const Rep&) = delete;
   Rep& operator=(const Rep&) = delete;
@@ -841,6 +736,124 @@ struct BlockBasedTableBuilder::ParallelCompressionRep {
     return block_rep;
   }
 };
+
+BlockBasedTableBuilder::Rep::Rep(
+    const ImmutableCFOptions& _ioptions, const MutableCFOptions& _moptions,
+    const BlockBasedTableOptions& table_opt,
+    const InternalKeyComparator& icomparator,
+    const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
+        int_tbl_prop_collector_factories,
+    uint32_t _column_family_id, WritableFileWriter* f,
+    const CompressionType _compression_type,
+    const CompressionOptions& _compression_opts, const bool skip_filters,
+    const int _level_at_creation, const std::string& _column_family_name,
+    const uint64_t _creation_time, const uint64_t _oldest_key_time,
+    const uint64_t target_file_size, const uint64_t _file_creation_time,
+    const std::string& _db_id, const std::string& _db_session_id)
+    : ioptions(_ioptions),
+      moptions(_moptions),
+      table_options(table_opt),
+      internal_comparator(icomparator),
+      file(f),
+      offset(0),
+      alignment(table_options.block_align
+                    ? std::min(table_options.block_size, kDefaultPageSize)
+                    : 0),
+      data_block(table_options.block_restart_interval,
+                 table_options.use_delta_encoding,
+                 false /* use_value_delta_encoding */,
+                 icomparator.user_comparator()
+                         ->CanKeysWithDifferentByteContentsBeEqual()
+                     ? BlockBasedTableOptions::kDataBlockBinarySearch
+                     : table_options.data_block_index_type,
+                 table_options.data_block_hash_table_util_ratio),
+      range_del_block(1 /* block_restart_interval */),
+      internal_prefix_transform(_moptions.prefix_extractor.get()),
+      compression_type(_compression_type),
+      sample_for_compression(_moptions.sample_for_compression),
+      compressible_input_data_bytes(0),
+      uncompressible_input_data_bytes(0),
+      sampled_input_data_bytes(0),
+      sampled_output_slow_data_bytes(0),
+      sampled_output_fast_data_bytes(0),
+      compression_opts(_compression_opts),
+      compression_dict(),
+      compression_ctxs(_compression_opts.parallel_threads),
+      verify_ctxs(_compression_opts.parallel_threads),
+      verify_dict(),
+      state((_compression_opts.max_dict_bytes > 0) ? State::kBuffered
+                                                   : State::kUnbuffered),
+      use_delta_encoding_for_index_values(table_opt.format_version >= 4 &&
+                                          !table_opt.block_align),
+      compressed_cache_key_prefix_size(0),
+      flush_block_policy(
+          table_options.flush_block_policy_factory->NewFlushBlockPolicy(
+              table_options, data_block)),
+      level_at_creation(_level_at_creation),
+      column_family_id(_column_family_id),
+      column_family_name(_column_family_name),
+      creation_time(_creation_time),
+      oldest_key_time(_oldest_key_time),
+      file_creation_time(_file_creation_time),
+      db_id(_db_id),
+      db_session_id(_db_session_id),
+      db_host_id(ioptions.db_host_id),
+      status_ok(true),
+      io_status_ok(true) {
+  if (target_file_size == 0) {
+    buffer_limit = compression_opts.max_dict_buffer_bytes;
+  } else if (compression_opts.max_dict_buffer_bytes == 0) {
+    buffer_limit = target_file_size;
+  } else {
+    buffer_limit =
+        std::min(target_file_size, compression_opts.max_dict_buffer_bytes);
+  }
+  for (uint32_t i = 0; i < compression_opts.parallel_threads; i++) {
+    compression_ctxs[i].reset(new CompressionContext(compression_type));
+  }
+  if (table_options.index_type ==
+      BlockBasedTableOptions::kTwoLevelIndexSearch) {
+    p_index_builder_ = PartitionedIndexBuilder::CreateIndexBuilder(
+        &internal_comparator, use_delta_encoding_for_index_values,
+        table_options);
+    index_builder.reset(p_index_builder_);
+  } else {
+    index_builder.reset(IndexBuilder::CreateIndexBuilder(
+        table_options.index_type, &internal_comparator,
+        &this->internal_prefix_transform, use_delta_encoding_for_index_values,
+        table_options));
+  }
+  if (skip_filters) {
+    filter_builder = nullptr;
+  } else {
+    FilterBuildingContext context(table_options);
+    context.column_family_name = column_family_name;
+    context.compaction_style = ioptions.compaction_style;
+    context.level_at_creation = level_at_creation;
+    context.info_log = ioptions.info_log;
+    filter_builder.reset(CreateFilterBlockBuilder(
+        ioptions, moptions, context, use_delta_encoding_for_index_values,
+        p_index_builder_));
+  }
+
+  for (auto& collector_factories : *int_tbl_prop_collector_factories) {
+    table_properties_collectors.emplace_back(
+        collector_factories->CreateIntTblPropCollector(column_family_id));
+  }
+  table_properties_collectors.emplace_back(
+      new BlockBasedTablePropertiesCollector(
+          table_options.index_type, table_options.whole_key_filtering,
+          _moptions.prefix_extractor != nullptr));
+  if (table_options.verify_compression) {
+    for (uint32_t i = 0; i < compression_opts.parallel_threads; i++) {
+      verify_ctxs[i].reset(new UncompressionContext(compression_type));
+    }
+  }
+
+  if (!ReifyDbHostIdProperty(ioptions.env, &db_host_id).ok()) {
+    ROCKS_LOG_INFO(ioptions.info_log, "db_host_id property will not be set");
+  }
+}
 
 BlockBasedTableBuilder::BlockBasedTableBuilder(
     const ImmutableCFOptions& ioptions, const MutableCFOptions& moptions,
